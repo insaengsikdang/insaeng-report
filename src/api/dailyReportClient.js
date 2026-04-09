@@ -5,7 +5,13 @@ const api = axios.create({
   timeout: 60000,
 })
 
-export const fetchCurrentDailyReport = async () => {
-  const { data } = await api.get('/daily-report/current')
+/** @param {{ refreshInsights?: boolean }} [opts] refreshInsights=true 이면 GA 재수집 + Gemini 재호출 후 Firestore 갱신 */
+export const fetchCurrentDailyReport = async (opts = {}) => {
+  const params = {}
+  if (opts.refreshInsights) params.refreshInsights = '1'
+  const { data } = await api.get('/daily-report/current', {
+    params,
+    timeout: opts.refreshInsights ? 120000 : 60000,
+  })
   return data
 }

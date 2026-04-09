@@ -8,6 +8,7 @@ import dotenv from 'dotenv'
 import analyticsRouter from './routes/analytics.js'
 import geminiRouter from './routes/gemini.js'
 import dailyReportRouter, { startDailyReportScheduler } from './routes/dailyReport.js'
+import { listGeminiApiKeys } from '../lib/geminiKeys.js'
 
 // process.cwd()가 프로젝트 루트가 아닐 때(하위 폴더에서 실행 등)에도 .env를 찾도록
 // server/index.js 기준 상위 폴더(저장소 루트)를 고정한다.
@@ -88,7 +89,10 @@ server.listen(PORT, () => {
   console.log(
     `   GA4 키 파일:   ${keyRel || '미설정'}${keyRel ? (keyOk ? ' (경로 확인됨)' : ' (파일 없음 — 경로를 프로젝트 루트 기준으로 확인)') : ''}`
   )
-  console.log(`   Gemini API:    ${process.env.GEMINI_API_KEY?.trim() ? '✓ 설정됨' : '✗ 미설정'}\n`)
+  const geminiKeys = listGeminiApiKeys()
+  console.log(
+    `   Gemini API:    ${geminiKeys.length ? '✓ 설정됨' : '✗ 미설정'}${geminiKeys.length > 1 ? ' (주 키 + 보조 키)' : ''}\n`
+  )
 
   startDailyReportScheduler()
 })

@@ -23,9 +23,26 @@ export const useDailyReport = () => {
     }
   }, [])
 
+  const rerunAiAnalysis = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchCurrentDailyReport({ refreshInsights: true })
+      setReport(data)
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        err.message ||
+        'AI 분석 재시도 중 오류가 발생했습니다.'
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  return { report, loading, error, refresh }
+  return { report, loading, error, refresh, rerunAiAnalysis }
 }

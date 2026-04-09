@@ -6,7 +6,9 @@
 - `GA4_SERVICE_ACCOUNT_JSON` (권장)
 - `GA4_KEY_FILE` (선택: 파일 경로 방식 사용할 때만)
 - `GEMINI_API_KEY`
+- `GEMINI_API_KEY_FALLBACK` (선택, 다른 프로젝트 키 — 429 시 자동 폴백)
 - `GEMINI_MODEL` (선택, 기본: `gemini-2.0-flash`)
+- `GEMINI_EXTRA_MODELS` (선택, 콤마 구분 — 예: `gemini-2.0-flash-lite,gemini-2.5-flash-lite`)
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY` (`\n` 포함 문자열로 저장)

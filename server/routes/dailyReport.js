@@ -1,12 +1,12 @@
 import express from 'express'
+import path from 'path'
 import dayjs from 'dayjs'
 import { google } from 'googleapis'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { getFirestore } from '../lib/firestore.js'
+import { getDailyReportWindow } from '../../lib/seoulDay.js'
+import { generateContentWithKeyRotation, listGeminiApiKeys } from '../../lib/geminiKeys.js'
 
 const router = express.Router()
-
-const MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash'
 const COLLECTION = 'dailyReports'
 
 const KPI_METRICS = [
@@ -18,15 +18,6 @@ const KPI_METRICS = [
   { name: 'averageSessionDuration' },
   { name: 'screenPageViewsPerSession' },
 ]
-
-function getWindowBounds(now = dayjs()) {
-  const windowStart =
-    now.hour() >= 18
-      ? now.startOf('day').hour(18)
-      : now.subtract(1, 'day').startOf('day').hour(18)
-  const windowEnd = windowStart.add(1, 'day')
-  return { windowStart, windowEnd, key: windowStart.format('YYYY-MM-DD-HH') }
-}
 
 function normalizePropertyId(raw) {
   if (!raw || !String(raw).trim()) return null
@@ -90,11 +81,11 @@ function rowToKpi(row) {
   }
 }
 
-async function fetchAnalyticsSnapshot(windowStart) {
+async function fetchAnalyticsSnapshot(reportDate) {
   const { client, property } = await getDataClient()
-  const endDate = windowStart.format('YYYY-MM-DD')
-  const startDate = windowStart.subtract(13, 'day').format('YYYY-MM-DD')
-  const prevDate = windowStart.subtract(1, 'day').format('YYYY-MM-DD')
+  const endDate = reportDate
+  const prevDate = dayjs(reportDate).subtract(1, 'day').format('YYYY-MM-DD')
+  const trendStart = dayjs(reportDate).subtract(13, 'day').format('YYYY-MM-DD')
 
   const [kpiToday, kpiYesterday, trendRes, pagesRes, channelsRes] = await Promise.all([
     client.properties.runReport({
@@ -108,7 +99,7 @@ async function fetchAnalyticsSnapshot(windowStart) {
     client.properties.runReport({
       property,
       requestBody: {
-        dateRanges: [{ startDate, endDate }],
+        dateRanges: [{ startDate: trendStart, endDate }],
         dimensions: [{ name: 'date' }],
         metrics: [
           { name: 'sessions' },
@@ -123,7 +114,7 @@ async function fetchAnalyticsSnapshot(windowStart) {
     client.properties.runReport({
       property,
       requestBody: {
-        dateRanges: [{ startDate, endDate }],
+        dateRanges: [{ startDate: endDate, endDate }],
         dimensions: [{ name: 'pagePath' }],
         metrics: [
           { name: 'sessions' },
@@ -138,7 +129,7 @@ async function fetchAnalyticsSnapshot(windowStart) {
     client.properties.runReport({
       property,
       requestBody: {
-        dateRanges: [{ startDate, endDate }],
+        dateRanges: [{ startDate: endDate, endDate }],
         dimensions: [{ name: 'sessionDefaultChannelGrouping' }],
         metrics: [
           { name: 'sessions' },
@@ -185,7 +176,8 @@ async function fetchAnalyticsSnapshot(windowStart) {
   })
 
   return {
-    dateRange: { startDate, endDate },
+    dateRange: { startDate: trendStart, endDate },
+    reportDate: endDate,
     kpiData: {
       today: rowToKpi(kpiToday.data.rows?.[0]),
       yesterday: rowToKpi(kpiYesterday.data.rows?.[0]),
@@ -196,16 +188,28 @@ async function fetchAnalyticsSnapshot(windowStart) {
   }
 }
 
+function extractJsonObject(raw) {
+  const t = String(raw ?? '').trim()
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const body = fence ? fence[1].trim() : t
+  const start = body.indexOf('{')
+  const end = body.lastIndexOf('}')
+  if (start === -1 || end <= start) throw new Error('Gemini 응답에서 JSON을 찾을 수 없습니다.')
+  return body.slice(start, end + 1)
+}
+
 async function runGeminiAnalysis(analyticsData) {
-  const key = (process.env.GEMINI_API_KEY || '').trim()
-  if (!key) {
+  if (listGeminiApiKeys().length === 0) {
     throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.')
   }
-  const genAI = new GoogleGenerativeAI(key)
-  const model = genAI.getGenerativeModel({
-    model: MODEL,
-    generationConfig: { responseMimeType: 'application/json' },
-  })
+
+  const payload = {
+    kpiData: analyticsData?.kpiData,
+    pageData: Array.isArray(analyticsData?.pageData) ? analyticsData.pageData.slice(0, 15) : analyticsData?.pageData,
+    channelData: Array.isArray(analyticsData?.channelData)
+      ? analyticsData.channelData.slice(0, 12)
+      : analyticsData?.channelData,
+  }
 
   const prompt = `당신은 이커머스 GA4 대시보드 데이터를 해석하는 애널리틱스 어시스턴트입니다.
 아래 JSON은 KPI(오늘/어제), 페이지별·채널별 요약 데이터입니다.
@@ -222,21 +226,30 @@ async function runGeminiAnalysis(analyticsData) {
 highlights는 데이터가 허용하면 3개 전후로 구성하고, pages는 해당되면 경로 배열, 없으면 [].
 
 데이터:
-${JSON.stringify(analyticsData)}`
+${JSON.stringify(payload)}`
 
-  const result = await model.generateContent(prompt)
-  const parsed = JSON.parse(result.response.text())
+  const result = await generateContentWithKeyRotation({
+    prompt,
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  let parsed
+  try {
+    parsed = JSON.parse(extractJsonObject(result.response.text()))
+  } catch (e) {
+    throw new Error(`Gemini JSON 파싱 실패: ${e.message || e}`)
+  }
   if (!Array.isArray(parsed.recommendations)) parsed.recommendations = []
   return parsed
 }
 
-async function generateReportForWindow(bounds) {
+async function generateReportForWindow(bounds, options = {}) {
+  const refreshInsights = Boolean(options.refreshInsights)
   const db = getFirestore()
   const ref = db.collection(COLLECTION).doc(bounds.key)
   const snap = await ref.get()
-  if (snap.exists) return snap.data()
+  if (snap.exists && !refreshInsights) return snap.data()
 
-  const analyticsData = await fetchAnalyticsSnapshot(bounds.windowStart)
+  const analyticsData = await fetchAnalyticsSnapshot(bounds.reportDate)
   let insights = null
   let insightError = null
   try {
@@ -251,8 +264,9 @@ async function generateReportForWindow(bounds) {
 
   const report = {
     key: bounds.key,
-    windowStart: bounds.windowStart.toISOString(),
-    windowEnd: bounds.windowEnd.toISOString(),
+    reportDate: bounds.reportDate,
+    windowStart: bounds.windowStart,
+    windowEnd: bounds.windowEnd,
     generatedAt: new Date().toISOString(),
     analyticsData,
     insights,
@@ -271,7 +285,7 @@ export async function startDailyReportScheduler() {
 
   const ensureCurrent = async () => {
     try {
-      await generateReportForWindow(getWindowBounds(dayjs()))
+      await generateReportForWindow(getDailyReportWindow(), { refreshInsights: false })
     } catch (err) {
       console.error('[daily-report/scheduler]', err?.message || err)
     }
@@ -281,9 +295,15 @@ export async function startDailyReportScheduler() {
   setInterval(ensureCurrent, 60 * 1000)
 }
 
-router.get('/current', async (_req, res) => {
+function parseRefreshInsightsQuery(query) {
+  const q = query?.refreshInsights ?? query?.refresh_insights
+  return ['1', 'true', 'yes'].includes(String(q ?? '').toLowerCase())
+}
+
+router.get('/current', async (req, res) => {
   try {
-    const report = await generateReportForWindow(getWindowBounds(dayjs()))
+    const refreshInsights = parseRefreshInsightsQuery(req.query)
+    const report = await generateReportForWindow(getDailyReportWindow(), { refreshInsights })
     res.json(report)
   } catch (err) {
     console.error('[daily-report/current]', err)

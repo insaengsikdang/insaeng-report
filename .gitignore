@@ -15,6 +15,7 @@ dist-ssr
 .env
 ga4-service-account.json
 insaeng-report-dev-firebase-adminsdk-fbsvc-7b074b0e2a.json
+server/data/
 
 # Editor directories and files
 .vscode/*

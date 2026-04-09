@@ -25,6 +25,7 @@ export default function App() {
     loading: dailyLoading,
     error: dailyError,
     refresh: refreshDailyReport,
+    rerunAiAnalysis: rerunDailyAiAnalysis,
   } = useDailyReport()
 
   const handleHeaderRefresh = () => {
@@ -65,6 +66,7 @@ export default function App() {
             loading={dailyLoading}
             error={dailyError}
             onRefresh={refreshDailyReport}
+            onRerunAi={rerunDailyAiAnalysis}
           />
         )}
 

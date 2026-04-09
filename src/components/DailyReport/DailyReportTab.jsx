@@ -1,6 +1,13 @@
 import { Sparkles, AlertCircle } from 'lucide-react'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 import MetricsGrid from '../Dashboard/MetricsGrid'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+const KST = 'Asia/Seoul'
 import { TrendChart, RevenueChart } from '../Dashboard/RevenueChart'
 import ChannelCard from '../Dashboard/ChannelCard'
 import PageTable from '../Dashboard/PageTable'
@@ -16,14 +23,14 @@ function renderBold(text) {
   return parts.map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part))
 }
 
-export default function DailyReportTab({ report, loading, error, onRefresh }) {
+export default function DailyReportTab({ report, loading, error, onRefresh, onRerunAi }) {
   return (
     <div className="fade-in">
       <div className="dashboard-header">
         <div className="dashboard-title-group">
           <h1 className="dashboard-title">일간 리포트</h1>
           <p className="dashboard-subtitle">
-            매일 오후 6시에 자동 생성되는 GA4 + Gemini 분석 결과
+            한국 시간(KST) 기준 당일 데이터 · GA4 + Gemini 자동 분석
           </p>
         </div>
       </div>
@@ -54,15 +61,17 @@ export default function DailyReportTab({ report, loading, error, onRefresh }) {
         <>
           <div className="card daily-report-meta">
             <div>
-              <div className="daily-report-label">리포트 구간</div>
+              <div className="daily-report-label">리포트 구간 (KST)</div>
               <div className="daily-report-value">
-                {dayjs(report.windowStart).format('YYYY-MM-DD HH:mm')} ~{' '}
-                {dayjs(report.windowEnd).format('YYYY-MM-DD HH:mm')}
+                {dayjs(report.windowStart).tz(KST).format('YYYY-MM-DD HH:mm')} ~{' '}
+                {dayjs(report.windowEnd).tz(KST).format('YYYY-MM-DD HH:mm')}
               </div>
             </div>
             <div>
               <div className="daily-report-label">생성 시각</div>
-              <div className="daily-report-value">{dayjs(report.generatedAt).format('YYYY-MM-DD HH:mm:ss')}</div>
+              <div className="daily-report-value">
+                {dayjs(report.generatedAt).tz(KST).format('YYYY-MM-DD HH:mm:ss')}
+              </div>
             </div>
           </div>
 
@@ -94,7 +103,42 @@ export default function DailyReportTab({ report, loading, error, onRefresh }) {
             <div className="card error-state" style={{ marginTop: 24 }}>
               <AlertCircle size={26} className="error-state-icon" />
               <div className="error-state-title">AI 분석 실패</div>
-              <div className="error-state-desc">일일 AI 분석에 실패했습니다. 다음 생성 주기에 다시 시도됩니다.</div>
+              <div className="error-state-desc">
+                저장된 리포트에 이전 오류가 남아 있을 수 있습니다. 키·쿼터를 바꾼 뒤 아래로 다시 시도하세요.
+              </div>
+              <ul className="error-state-desc" style={{ marginTop: 8, paddingLeft: 20, textAlign: 'left' }}>
+                <li>
+                  <strong>429 / limit:0</strong>: Google AI Studio에서{' '}
+                  <strong>다른 프로젝트(또는 계정)</strong>로 새 API 키를 만들고, `.env`의{' '}
+                  <code>GEMINI_API_KEY</code> 또는 <code>GEMINI_API_KEY_FALLBACK</code>에 넣은 뒤 서버를 재시작하세요.
+                </li>
+                <li>같은 프로젝트 키를 두 개 써도 쿼터는 공유됩니다.</li>
+              </ul>
+              {typeof onRerunAi === 'function' && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => onRerunAi()}
+                  disabled={loading}
+                  style={{ marginTop: 12 }}
+                >
+                  AI 분석 다시 시도 (GA + Gemini 재실행)
+                </button>
+              )}
+              <details style={{ marginTop: 12, textAlign: 'left' }}>
+                <summary style={{ cursor: 'pointer', opacity: 0.85 }}>기술 메시지 보기</summary>
+                <pre
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    opacity: 0.9,
+                  }}
+                >
+                  {report.insightError}
+                </pre>
+              </details>
             </div>
           ) : (
             <section className="insight-section" style={{ marginTop: 24 }}>

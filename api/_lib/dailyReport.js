@@ -8,36 +8,35 @@ import {
   fetchChannelData,
 } from './ga4.js'
 import { analyzeWithGemini } from './gemini.js'
+import { getDailyReportWindow } from '../../lib/seoulDay.js'
 
 const COLLECTION = 'dailyReports'
 
-export function getWindowBounds(now = dayjs()) {
-  const windowStart =
-    now.hour() >= 18
-      ? now.startOf('day').hour(18)
-      : now.subtract(1, 'day').startOf('day').hour(18)
-  const windowEnd = windowStart.add(1, 'day')
-  const key = windowStart.format('YYYY-MM-DD-HH')
-  return { key, windowStart, windowEnd }
-}
+export { getDailyReportWindow }
 
-async function buildAnalyticsSnapshot(windowStart) {
+/**
+ * reportDate: 서울 기준 YYYY-MM-DD (그날 하루)
+ * - KPI: 해당일 vs 전일 (각각 하루)
+ * - 트렌드: 최근 14일(당일 포함)
+ * - 페이지/채널: 해당일 하루만
+ */
+async function buildAnalyticsSnapshot(reportDate) {
   const { client, property } = await getGa4Client()
-  const endDate = windowStart.format('YYYY-MM-DD')
-  const startDate = windowStart.subtract(13, 'day').format('YYYY-MM-DD')
-  const prevEnd = windowStart.subtract(14, 'day').format('YYYY-MM-DD')
-  const prevStart = windowStart.subtract(27, 'day').format('YYYY-MM-DD')
+  const endDate = reportDate
+  const prevDate = dayjs(reportDate).subtract(1, 'day').format('YYYY-MM-DD')
+  const trendStart = dayjs(reportDate).subtract(13, 'day').format('YYYY-MM-DD')
 
   const [today, yesterday, trendData, pageData, channelData] = await Promise.all([
-    runKpiForRange(client, property, startDate, endDate),
-    runKpiForRange(client, property, prevStart, prevEnd),
-    fetchTrendData(client, property, startDate, endDate),
-    fetchPageData(client, property, startDate, endDate),
-    fetchChannelData(client, property, startDate, endDate),
+    runKpiForRange(client, property, endDate, endDate),
+    runKpiForRange(client, property, prevDate, prevDate),
+    fetchTrendData(client, property, trendStart, endDate),
+    fetchPageData(client, property, endDate, endDate),
+    fetchChannelData(client, property, endDate, endDate),
   ])
 
   return {
-    dateRange: { startDate, endDate },
+    dateRange: { startDate: trendStart, endDate },
+    reportDate,
     kpiData: { today, yesterday },
     trendData,
     pageData,
@@ -45,14 +44,15 @@ async function buildAnalyticsSnapshot(windowStart) {
   }
 }
 
-export async function getOrCreateDailyReport(now = dayjs()) {
-  const bounds = getWindowBounds(now)
+export async function getOrCreateDailyReport(now = new Date(), options = {}) {
+  const refreshInsights = Boolean(options.refreshInsights)
+  const bounds = getDailyReportWindow(now)
   const db = getFirestore()
   const ref = db.collection(COLLECTION).doc(bounds.key)
   const snap = await ref.get()
-  if (snap.exists) return snap.data()
+  if (snap.exists && !refreshInsights) return snap.data()
 
-  const analyticsData = await buildAnalyticsSnapshot(bounds.windowStart)
+  const analyticsData = await buildAnalyticsSnapshot(bounds.reportDate)
 
   let insights = null
   let insightError = null
@@ -68,8 +68,9 @@ export async function getOrCreateDailyReport(now = dayjs()) {
 
   const report = {
     key: bounds.key,
-    windowStart: bounds.windowStart.toISOString(),
-    windowEnd: bounds.windowEnd.toISOString(),
+    reportDate: bounds.reportDate,
+    windowStart: bounds.windowStart,
+    windowEnd: bounds.windowEnd,
     generatedAt: new Date().toISOString(),
     analyticsData,
     insights,
