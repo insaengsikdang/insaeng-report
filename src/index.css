@@ -172,8 +172,10 @@ body {
 .header-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: clamp(6px, 1.5vw, 10px);
   text-decoration: none;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .header-logo-icon {
@@ -187,11 +189,18 @@ body {
   box-shadow: var(--shadow-glow);
 }
 
+.header-logo-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .header-logo-text {
-  font-size: 1.1rem;
+  font-size: clamp(0.78rem, 2.8vw, 1.1rem);
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.3px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .header-logo-text span {
@@ -391,7 +400,7 @@ body {
    ============================================ */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1039,13 +1048,75 @@ body {
    ============================================ */
 @media (max-width: 768px) {
   .main-content { padding: 16px; }
-  .header { padding: 0 16px; }
+  .header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .header-logo-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  .header-logo-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .header-logo-text {
+    font-size: clamp(0.72rem, 3.4vw, 0.95rem);
+    letter-spacing: -0.35px;
+  }
+  .header-center {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .header-badge {
+    padding: 3px 8px;
+    font-size: 0.68rem;
+    gap: 4px;
+  }
+  .header-date {
+    font-size: 0.68rem;
+    padding: 4px 8px;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header-actions {
+    gap: 6px;
+    flex-shrink: 0;
+  }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .dashboard-header { flex-direction: column; align-items: stretch; }
   .dashboard-controls { justify-content: flex-start; }
 }
 
 @media (max-width: 480px) {
+  .header {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  .header-logo-icon {
+    width: 26px;
+    height: 26px;
+  }
+  .header-logo-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+  .header-logo-text {
+    font-size: 0.72rem;
+    letter-spacing: -0.4px;
+  }
+  .header-badge {
+    padding: 2px 6px;
+    font-size: 0.62rem;
+  }
+  .header-date {
+    font-size: 0.62rem;
+    padding: 3px 6px;
+    max-width: 36vw;
+  }
   .kpi-grid { grid-template-columns: 1fr; }
 }
 

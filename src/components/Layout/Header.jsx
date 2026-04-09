@@ -18,7 +18,7 @@ export default function Header({ onRefresh, loading }) {
       <div className="header-center">
         <div className="header-badge">
           <div className="header-badge-dot" />
-          GA4 실시간 연결
+          GA4
         </div>
       </div>
 
