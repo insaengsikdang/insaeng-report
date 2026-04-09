@@ -14,15 +14,8 @@ import 'dayjs/locale/ko'
 
 dayjs.locale('ko')
 
-const TAB_STORAGE_KEY = 'insaeng-report:active-tab'
-
-function getInitialTab() {
-  const saved = window.localStorage.getItem(TAB_STORAGE_KEY)
-  return saved === 'dashboard' ? 'dashboard' : 'daily'
-}
-
 export default function App() {
-  const [activeTab, setActiveTab] = useState(getInitialTab)
+  const [activeTab, setActiveTab] = useState('daily')
   const {
     kpiData, trendData, pageData, channelData,
     loading, error, dateRange, setDateRange, refresh,
@@ -42,10 +35,7 @@ export default function App() {
     refresh()
   }
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab)
-    window.localStorage.setItem(TAB_STORAGE_KEY, tab)
-  }
+  const handleTabChange = (tab) => setActiveTab(tab)
 
   return (
     <div className="app-layout">

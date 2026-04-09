@@ -9,7 +9,8 @@
     "dev:all": "concurrently -k -p \"[{name}]\" -n \"FRONTEND,BACKEND\" -c \"cyan,yellow\" \"npm run dev\" \"npm run server\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "firebase:env": "node scripts/inject-firebase-env.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

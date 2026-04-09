@@ -1,14 +1,13 @@
 import express from 'express'
-import fs from 'fs/promises'
-import path from 'path'
 import dayjs from 'dayjs'
 import { google } from 'googleapis'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { getFirestore } from '../lib/firestore.js'
 
 const router = express.Router()
 
 const MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash'
-const STORE_PATH = path.resolve(process.cwd(), 'server', 'data', 'daily-report.json')
+const COLLECTION = 'dailyReports'
 
 const KPI_METRICS = [
   { name: 'sessions' },
@@ -27,20 +26,6 @@ function getWindowBounds(now = dayjs()) {
       : now.subtract(1, 'day').startOf('day').hour(18)
   const windowEnd = windowStart.add(1, 'day')
   return { windowStart, windowEnd, key: windowStart.format('YYYY-MM-DD-HH') }
-}
-
-async function readStore() {
-  try {
-    const raw = await fs.readFile(STORE_PATH, 'utf8')
-    return JSON.parse(raw)
-  } catch {
-    return { reports: {} }
-  }
-}
-
-async function writeStore(data) {
-  await fs.mkdir(path.dirname(STORE_PATH), { recursive: true })
-  await fs.writeFile(STORE_PATH, JSON.stringify(data, null, 2), 'utf8')
 }
 
 function normalizePropertyId(raw) {
@@ -246,10 +231,10 @@ ${JSON.stringify(analyticsData)}`
 }
 
 async function generateReportForWindow(bounds) {
-  const store = await readStore()
-  if (store.reports?.[bounds.key]) {
-    return store.reports[bounds.key]
-  }
+  const db = getFirestore()
+  const ref = db.collection(COLLECTION).doc(bounds.key)
+  const snap = await ref.get()
+  if (snap.exists) return snap.data()
 
   const analyticsData = await fetchAnalyticsSnapshot(bounds.windowStart)
   let insights = null
@@ -265,6 +250,7 @@ async function generateReportForWindow(bounds) {
   }
 
   const report = {
+    key: bounds.key,
     windowStart: bounds.windowStart.toISOString(),
     windowEnd: bounds.windowEnd.toISOString(),
     generatedAt: new Date().toISOString(),
@@ -273,8 +259,7 @@ async function generateReportForWindow(bounds) {
     insightError,
   }
 
-  const nextStore = { ...store, reports: { ...(store.reports || {}), [bounds.key]: report } }
-  await writeStore(nextStore)
+  await ref.set(report)
   return report
 }
 
